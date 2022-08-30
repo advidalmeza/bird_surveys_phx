@@ -1,0 +1,101 @@
+---
+title: 'Example: Bird surveys in central AZ - PHX metro area'
+author: "Alessandra Vidal Meza"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(here)
+library(janitor)
+library(lubridate)
+```
+
+Let's load in the data using the **here** package.
+
+```{r}
+bird_observations <- read_csv(here::here("data", "52_pp52_birds_1.csv")) %>%
+   clean_names()
+
+sites <- read_csv(here::here("data", "52_pp52_sites_1.csv")) %>%
+   clean_names()
+
+surveys <- read_csv(here::here("data", "52_pp52_surveys_1.csv")) %>%
+   clean_names
+
+taxa_list <- read_csv(here::here("data", "52_pp52_taxalist_1.csv")) %>%
+   clean_names()
+```
+
+Now, let's create a subset for birds with `species_id` "BHCO" and "RWBL", and from sites with `site_id` "LI-W" and "NU-C".
+
+```{r}
+bird_subset <- bird_observations %>%
+  filter(species_id %in% c("BHCO", "RWBL") & 
+           site_id %in% c("LI-W", "NU-C"))
+```
+
+First, left join the **bird_subset** to **sites** by the `site_id` and to **taxa_list** by `species_id`:
+
+```{r}
+bird_left <- left_join(bird_subset, sites, by = "site_id") %>%
+  left_join(bird_subset, taxa_list, by = "species_id" )
+```
+
+Now, a full join. Note that a `full_join()` between **bird_subset** and **sites** will contain observations for all sites in the **sites** dataset even if these sites are not observed on **bird_subset**.
+
+```{r}
+birds_full <- full_join(bird_subset,sites)
+```
+
+Next, an inner join. Note here that an `inner_join()` between **bird_subset** and **taxa_list** will contain only observations of `species_id` on both datasets.
+
+```{r}
+birds_inner <- inner_join(bird_subset, taxa_list, by = "species_id")
+```
+
+Let's suppose we used a `left_join()`. Note now that this keeps observations of birds with `species_id` that do not appear on the **taxa_list**.
+
+```{r}
+birds_inner_versus_left <- left_join(bird_subset, taxa_list, by = "species_id")
+```
+
+Now, let's try some data wrangling. First, rename `notes` to `bird_obs_notes` to avoid conflict with notes in the **surveys** dataset.
+
+```{r}
+birds <- bird_observations %>%
+  rename(bird_obs_notes = notes)
+```
+
+Next, create a subset with all observations and join. Limit this subset to `survey_date`, `common_name`, `park_name`, and `bird_count`.
+
+```{r}
+birds_dataset <- birds %>%
+  left_join(y = taxa_list, by = "species_id") %>%
+  left_join(y = sites, by = "site_id") %>%
+  left_join(y = surveys, by = c("survey_id", "site_id")) %>%
+  select(survey_date, common_name, park_name, bird_count)
+```
+
+Use **lubridate** package to add a new column `survey_month`, which contains only the month number. And move this column.
+
+```{r}
+birds_1 <- birds_dataset %>%
+  mutate(survey_month = as.factor(lubridate::month(survey_date))) %>%
+  dplyr::relocate(survey_month, .after = survey_date)
+```
+
+Finally, let's find the total of birds observed by park and month and limit to "Lindo", "Orme", "Palomino" and "Sonrisa" parks.
+
+```{r}
+birds_clean <- birds_1 %>%
+  group_by(park_name, survey_month) %>%
+  summarize(sum(bird_count, na.rm = TRUE)) %>%
+  filter(park_name %in% c("Lindo", "Orme", "Palomino", "Sonrisa"))
+```
+
+### Citation
+
+Warren, P.S., A. Kinzig, C.A. Martin, and L. Machabee. 2013. Ecological and social Interactions in urban parks: bird surveys in local parks in the central Arizona-Phoenix metropolitan area ver 9. Environmental Data Initiative. <https://doi.org/10.6073/pasta/bff8e94e254c9317fa42c86f413a46ce> (Accessed 2022-08-30).
